@@ -242,7 +242,7 @@ export async function getProducts(token) {
 export async function createProduct(token, product) {
 
   const result = unwrap(
-    await request('/products', {
+    await request('/api/products', {
 
       method: 'POST',
 
@@ -267,7 +267,7 @@ export async function updateProduct(token, id, product) {
 
   const result = unwrap(
     await request(
-      `/products/${encodeURIComponent(id)}`,
+      `/api/products/${encodeURIComponent(id)}`,
       {
 
         method: 'PUT',
@@ -293,7 +293,7 @@ export async function updateProduct(token, id, product) {
 export async function deleteProduct(token, id) {
 
   await request(
-    `/products/${encodeURIComponent(id)}`,
+    `/api/products/${encodeURIComponent(id)}`,
     {
 
       method: 'DELETE',
@@ -311,7 +311,7 @@ export async function deleteProduct(token, id) {
 
 export async function logout(token) {
 
-  await request('/logout', {
+  await request('/api/logout', {
 
     method: 'POST',
 
@@ -330,7 +330,7 @@ export async function testApi() {
   try {
 
     const response = await fetch(
-      `${API_BASE_URL}/products`,
+      `${API_BASE_URL}/api/products`,
       {
         method: 'GET',
         headers: {
