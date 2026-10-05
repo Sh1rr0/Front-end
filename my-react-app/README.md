@@ -16,17 +16,17 @@ The frontend sends JSON requests to:
 
 | Method | Endpoint | Request / response |
 | --- | --- | --- |
-| `POST` | `/api/login` | `{ "email": "...", "password": "..." }`; response contains `token` or `access_token` and optionally `user` |
-| `GET` | `/api/products` | JSON array or `{ "products": [...] }`; product fields include `id`, `name`, `category`, `price`, `stock`, and optional `description` |
-| `POST` | `/api/products` | Product JSON; response contains the created product |
-| `PUT` | `/api/products/{id}` | Updated product JSON |
+| `POST` | `/api/login` | `{ "username": "...", "password": "..." }`; response contains `access_token` and `refresh_token` |
+| `GET` | `/api/products` | JSON array with `id`, `product_name`, `category`, `price`, `quantity`, and `description` |
+| `POST` | `/api/products` | Product JSON; response contains the created row in `data` |
+| `PUT` | `/api/products/{id}` | Updated row in `data` |
 | `DELETE` | `/api/products/{id}` | Successful response |
-| `POST` | `/api/logout` | Successful response |
+| `POST` | `/api/logout` | `{ "refresh_token": "..." }`; revokes the refresh token |
 
-Authenticated requests use `Authorization: Bearer <token>`. Product IDs may be `id` or `product_id`; names may be `name` or `title`; stock may be `stock` or `quantity`. If your LavaLust routes or authentication response use a different contract, update the endpoint paths and payload normalization in `src/api.js` to match the backend.
+Authenticated product requests use `Authorization: Bearer <access_token>`. Product writes accept `product_name`, `category`, `description`, `price`, and `quantity`.
 
 ## Render and Aiven
 
 This directory contains the React frontend only; it does not contain a LavaLust API or database credentials. Deploy the separate API service to Render, configure its production environment with the Aiven MySQL host, port, database, username, password, and TLS settings supplied by Aiven, and verify the API's health and CORS settings. Do not put database credentials in this frontend.
 
-Deploy this app as a Render Static Site with root directory `my-react-app`, build command `npm install && npm run build`, and publish directory `dist`. Set `VITE_API_BASE_URL` to the deployed API origin in the static site's build environment. Since Vite variables are compiled into static assets, trigger a new build after changing this value.
+Deploy this app to Vercel with this directory as the project root and `npm run build` as the build command; Vite outputs to `dist`. Set `VITE_API_BASE_URL` to the deployed API origin in the Vercel project's environment settings for Production and redeploy after changing it. Also set the API's `CORS_ALLOW_ORIGIN` on Render to the exact Vercel site origin (scheme and hostname, without a path). Vite variables are compiled into static assets and are public, so never put secrets in `VITE_*` variables.

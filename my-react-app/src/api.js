@@ -71,13 +71,12 @@ async function request(path, { token, ...options } = {}) {
 // ---------- Login ----------
 
 export async function login(username, password) {
-  // Sends the same value as both "username" and "email" so the API can match either.
-  const payload = await request('/api/auth/login', {
+  const payload = await request('/api/login', {
     method: 'POST',
-    body: JSON.stringify({ username, email: username, password }),
+    body: JSON.stringify({ username, password }),
   })
 
-  // LavaLust returns { message, tokens: { access_token, refresh_token } }
+  // LavaLust returns access_token and refresh_token directly.
   const tokens = payload?.tokens ?? payload?.data ?? payload
   const token = tokens?.access_token || tokens?.token || tokens?.accessToken
 
@@ -101,6 +100,7 @@ function fromApi(p) {
     ...p,
     id: p.id,
     name: p.product_name ?? '',
+    category: p.category ?? '',
     description: p.description ?? '',
     price: p.price ?? 0,
     stock: p.quantity ?? 0,
@@ -111,6 +111,7 @@ function fromApi(p) {
 function toApi(p) {
   return {
     product_name: p.product_name ?? p.name ?? '',
+    category: p.category ?? '',
     description: p.description ?? '',
     price: Number(p.price) || 0,
     quantity: Number(p.quantity ?? p.stock) || 0,
@@ -160,7 +161,7 @@ export async function logout() {
   localStorage.removeItem(REFRESH_KEY)
   try {
     if (refresh) {
-      await request('/api/auth/logout', {
+      await request('/api/logout', {
         method: 'POST',
         body: JSON.stringify({ refresh_token: refresh }),
       })
