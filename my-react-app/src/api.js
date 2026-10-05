@@ -1,12 +1,10 @@
-// Get the LavaLust API URL from Vercel environment variables.
-// Example:
-// VITE_API_BASE_URL=https://your-lavalust-api.onrender.com
+// LavaLust API client.
+// Set VITE_API_BASE_URL (Vercel / .env) to your deployed API, e.g.
+// VITE_API_BASE_URL=https://famadulan-adrian-lavalust.onrender.com
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
 
-
-// ================================
-// API ERROR
-// ================================
+// The refresh token is kept only so logout can revoke it on the server.
+const REFRESH_KEY = 'lavalust_refresh_token'
 
 export class ApiError extends Error {
   constructor(message, status = null) {
@@ -16,14 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-
-// ================================
-// MAIN REQUEST FUNCTION
-// ================================
-
 async function request(path, { token, ...options } = {}) {
-
-  // Make sure the API URL exists
   if (!API_BASE_URL) {
     throw new ApiError(
       'API is not configured. Set VITE_API_BASE_URL to your deployed LavaLust API URL.'
@@ -31,38 +22,18 @@ async function request(path, { token, ...options } = {}) {
   }
 
   let response
-
   try {
-
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
-
       headers: {
         Accept: 'application/json',
-
-        // Only add Content-Type when sending a body
-        ...(options.body
-          ? {
-              'Content-Type': 'application/json',
-            }
-          : {}),
-
-        // Add JWT token when available
-        ...(token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : {}),
-
-        // Allow custom headers
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
     })
-
   } catch (error) {
-
     console.error('API connection error:', error)
-
     throw new ApiError(
       `Could not reach the API. Check your API URL and CORS configuration. ${
         error.message || 'Failed to fetch'
@@ -70,14 +41,9 @@ async function request(path, { token, ...options } = {}) {
     )
   }
 
-
-  // Read response
   const text = await response.text()
-
   let payload = null
-
   if (text) {
-
     try {
       payload = JSON.parse(text)
     } catch {
@@ -85,272 +51,137 @@ async function request(path, { token, ...options } = {}) {
     }
   }
 
-
-  // Handle HTTP errors
   if (!response.ok) {
-
-    const message =
-      typeof payload === 'object' && payload
-        ? payload.message ||
-          payload.error ||
-          `API request failed (${response.status}).`
-
-        : typeof payload === 'string' && payload
-        ? payload
-
-        : `API request failed (${response.status}).`
-
+    let message = `API request failed (${response.status}).`
+    if (payload && typeof payload === 'object') {
+      // Field-level validation errors are more useful than "Validation failed".
+      const fieldErrors = payload.errors && typeof payload.errors === 'object'
+        ? Object.values(payload.errors).flat().join(' ')
+        : ''
+      message = fieldErrors || payload.error || payload.message || message
+    } else if (typeof payload === 'string' && payload) {
+      message = payload
+    }
     throw new ApiError(message, response.status)
   }
-
 
   return payload
 }
 
-
-// ================================
-// RESPONSE HELPER
-// ================================
-
-function unwrap(payload) {
-  return payload?.data ?? payload
-}
-
-
-// ================================
-// LOGIN
-// ================================
+// ---------- Login ----------
 
 export async function login(username, password) {
-
-  const payload = unwrap(
-    await request('/api/login', {
-      method: 'POST',
-
-      body: JSON.stringify({
-        username: username,
-        password: password,
-      }),
-    })
-  )
-
-
-  // Support different token names
-  const token =
-    payload?.token ||
-    payload?.access_token ||
-    payload?.accessToken
-
-
-  if (!token) {
-
-    console.error('Login response:', payload)
-
-    throw new ApiError(
-      'Login was successful but the API did not return a token. Expected token, access_token, or accessToken.'
-    )
-  }
-
-
-  return {
-    token: token,
-
-    user:
-      payload?.user ||
-      payload?.account ||
-      null,
-  }
-}
-
-
-// ================================
-// GET PRODUCTS
-// ================================
-
-export async function getProducts(token) {
-
-  const payload = unwrap(
-    await request('/api/products', {
-      method: 'GET',
-      token: token,
-    })
-  )
-
-
-  const products = Array.isArray(payload)
-    ? payload
-    : payload?.products
-
-
-  if (!Array.isArray(products)) {
-
-    console.error('Products response:', payload)
-
-    throw new ApiError(
-      'The products endpoint returned an unexpected response. Expected a JSON array or a products array.'
-    )
-  }
-
-
-  return products.map((product) => ({
-
-    ...product,
-
-    // ID
-    id:
-      product.id ??
-      product.product_id ??
-      product.Product_ID ??
-      product.ProductID,
-
-    // Name
-    name:
-      product.name ??
-      product.product_name ??
-      product.title ??
-      '',
-
-    // Category
-    category:
-      product.category ??
-      product.category_name ??
-      '',
-
-    // Price
-    price:
-      product.price ??
-      0,
-
-    // Stock
-    stock:
-      product.stock ??
-      product.quantity ??
-      0,
-
-    // Description
-    description:
-      product.description ??
-      '',
-  }))
-}
-
-
-// ================================
-// CREATE PRODUCT
-// ================================
-
-export async function createProduct(token, product) {
-
-  const result = unwrap(
-    await request('/api/products', {
-
-      method: 'POST',
-
-      token: token,
-
-      body: JSON.stringify({
-        ...product,
-      }),
-    })
-  )
-
-
-  return result?.product ?? result
-}
-
-
-// ================================
-// UPDATE PRODUCT
-// ================================
-
-export async function updateProduct(token, id, product) {
-
-  const result = unwrap(
-    await request(
-      `/api/products/${encodeURIComponent(id)}`,
-      {
-
-        method: 'PUT',
-
-        token: token,
-
-        body: JSON.stringify({
-          ...product,
-        }),
-      }
-    )
-  )
-
-
-  return result?.product ?? result
-}
-
-
-// ================================
-// DELETE PRODUCT
-// ================================
-
-export async function deleteProduct(token, id) {
-
-  await request(
-    `/api/products/${encodeURIComponent(id)}`,
-    {
-
-      method: 'DELETE',
-
-      token: token,
-    }
-  )
-
-}
-
-
-// ================================
-// LOGOUT
-// ================================
-
-export async function logout(token) {
-
-  await request('/api/logout', {
-
+  // Sends the same value as both "username" and "email" so the API can match either.
+  const payload = await request('/api/auth/login', {
     method: 'POST',
-
-    token: token,
+    body: JSON.stringify({ username, email: username, password }),
   })
 
+  // LavaLust returns { message, tokens: { access_token, refresh_token } }
+  const tokens = payload?.tokens ?? payload?.data ?? payload
+  const token = tokens?.access_token || tokens?.token || tokens?.accessToken
+
+  if (!token) {
+    console.error('Login response:', payload)
+    throw new ApiError('Login worked but the API did not return an access token.')
+  }
+
+  if (tokens.refresh_token) {
+    localStorage.setItem(REFRESH_KEY, tokens.refresh_token)
+  }
+
+  return { token, user: payload?.user ?? null }
 }
 
+// ---------- Products ----------
 
-// ================================
-// TEST API CONNECTION
-// ================================
+// Convert the API's columns into the names the screens use.
+function fromApi(p) {
+  return {
+    ...p,
+    id: p.id,
+    name: p.product_name ?? '',
+    description: p.description ?? '',
+    price: p.price ?? 0,
+    stock: p.quantity ?? 0,
+  }
+}
+
+// Convert the form's values into the columns the API expects.
+function toApi(p) {
+  return {
+    product_name: p.product_name ?? p.name ?? '',
+    description: p.description ?? '',
+    price: Number(p.price) || 0,
+    quantity: Number(p.quantity ?? p.stock) || 0,
+  }
+}
+
+export async function getProducts(token) {
+  const payload = await request('/api/products', { method: 'GET', token })
+  const list = Array.isArray(payload) ? payload : payload?.data ?? payload?.products
+
+  if (!Array.isArray(list)) {
+    console.error('Products response:', payload)
+    throw new ApiError('The products endpoint returned an unexpected response.')
+  }
+  return list.map(fromApi)
+}
+
+export async function createProduct(token, product) {
+  const result = await request('/api/products', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(toApi(product)),
+  })
+  return fromApi(result?.data ?? result)
+}
+
+export async function updateProduct(token, id, product) {
+  const result = await request(`/api/products/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(toApi(product)),
+  })
+  return fromApi(result?.data ?? result)
+}
+
+export async function deleteProduct(token, id) {
+  await request(`/api/products/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+// ---------- Logout ----------
+
+export async function logout() {
+  const refresh = localStorage.getItem(REFRESH_KEY)
+  localStorage.removeItem(REFRESH_KEY)
+  try {
+    if (refresh) {
+      await request('/api/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refresh }),
+      })
+    }
+  } catch (error) {
+    // Signing out locally is enough if the server call fails.
+    console.warn('Logout request failed:', error)
+  }
+}
+
+// ---------- Connection test ----------
 
 export async function testApi() {
-
   try {
-
-    const response = await fetch(
-      `${API_BASE_URL}/api/products`,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      }
-    )
-
-
-    return {
-      success: response.ok,
-      status: response.status,
-    }
-
+    const response = await fetch(`${API_BASE_URL}/api/products`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    })
+    // 401 is expected without a token and still means the API is reachable.
+    return { success: response.ok || response.status === 401, status: response.status }
   } catch (error) {
-
-    return {
-      success: false,
-      status: null,
-      error: error.message,
-    }
+    return { success: false, status: null, error: error.message }
   }
 }
